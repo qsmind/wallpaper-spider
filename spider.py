@@ -34,13 +34,24 @@ class producer(threading.Thread):
             try:
                 q = self.page_queue.get(block=False)
                 print(self.i, '开始任务%s======='%(q))
-                url = 'https://careers.tencent.com/tencentcareer/api/post/Query?keyword=python&pageIndex=%s&pageSize=10'%(q)
-                self.getHtml(url)
-                print(self.i,'结束任务=======')
+                # url = 'https://careers.tencent.com/tencentcareer/api/post/Query?keyword=python&pageIndex=%s&pageSize=10'%(q)
+                url = 'http://spotlight.shijuewuyu.com/?page=%s'%(q)
+                html=self.get_html(url)# 获取主页信息
+                pic_list = []  # 二维列表，格式：[链接，套图名称,更新时间]
+                get_pic_list(html, pic_list)  # 获取套图      
+                
+                for link in pic_list:  # 爬取单个页面套图
+                    j += 1  # 已获取的套图数量
+                    html = get_html(link[0])  # 获取网页
+                    src=[]
+                    length = get_pic_link(html,src)  # 获取图片链接
+                    # 将图片链接存入队列
+                    for ref in src:
+                        response_q.put(ref)    
             except:
                 pass
             
-        # 获取网页
+    # 获取网页
     def get_html(self,url):
         i=0
         while i<2:
@@ -116,6 +127,7 @@ class consumer(threading.Thread):
                 self.parse_html(response)
             except:
                 pass
+            
     def parse_html(self,response):
         job_lst = response['Data']['Posts']
         for job in job_lst:
@@ -131,6 +143,56 @@ class consumer(threading.Thread):
             with lock:
                 with open("腾讯招聘.txt", 'a', encoding='utf-8') as f:
                     f.write(info + '\n')
+                    
+    # 下载一套图片
+    def get_pic(self,src, length, name,uptime, path, k):
+        # 创建套图目录
+        name=name+'-'+uptime
+        #若目录已存在，则返回
+        # if os.path.isdir('{}/{}/{}'.format(path,k, name)):
+        #     return
+        try:
+            create_dir('{}/{}'.format(path, str(name)))
+        except :
+            print('创建目录失败！')
+            return 
+
+        # headers = {
+        #     'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.10240",
+        #     'Connection': 'Keep-Alive',
+        #     'Referer': "http://www.mzitu.com/99566"
+        # }
+
+        # headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:61.0) Gecko/20100101 Firefox/61.0"}
+
+        i=1
+        for url in src:
+            err=0
+            while err<3:
+                try:
+                    # if i < 10:
+                    #     url = src[:-6] + '0' + str(i) + '.jpg'
+                    # else:
+                    #     url = src[:-6] + str(i) + '.jpg'
+                    # 使用随机的user_agent
+                    headers = {
+                        'User-Agent': rdhd.random_user_agent(),
+                        'Connection': 'Keep-Alive'
+                    }
+                    r = requests.get(url, headers=headers,timeout=22)
+                    with open('{}/{}/{}'.format(path, name, '00'+str(i)+'_'+url.split('/')[-1]), 'wb') as f:
+                        f.write(r.content)
+
+                    print('{}下载成功！'.format(url.split('/')[-1]),'进度：{}/{}'.format(i, length))
+                    i+=1
+                    time.sleep(1)
+                    break
+                    # if i==4: #下载图片数量
+                    #     break
+                except:
+                    err+=1
+                    print('第',err,'次下载失败！')
+                    # continue
  
  
 lock = threading.Lock()  #锁
@@ -140,7 +202,7 @@ flag = False             #表示生产者线程是否都结束
 if __name__ == '__main__':
     #创建生产者任务队列
     page_queue = Queue()
-    for i in range(1,88):
+    for i in range(1,175):
         page_queue.put(i)
  
     #启线程队列
